@@ -1,6 +1,5 @@
-aiogram==3.8.0
-pydantic==2.7.4
-pydantic-core==2.39.0
+aiogram==3.13.1
+pydantic==2.9.2
 python-docx
 cairosvg
 wand
