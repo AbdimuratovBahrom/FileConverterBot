@@ -1,0 +1,10 @@
+aiogram==3.8.0
+Pillow
+pypandoc
+python-docx
+cairosvg
+wand
+pydub
+fonttools
+rarfile
+py7zr
