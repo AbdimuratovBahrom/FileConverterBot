@@ -8,3 +8,4 @@ pydub
 fonttools
 rarfile
 py7zr
+pydantic==2.7.4
