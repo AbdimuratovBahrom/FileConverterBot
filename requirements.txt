@@ -1,6 +1,6 @@
 aiogram==3.8.0
-Pillow
-pypandoc
+pydantic==2.7.4
+pydantic-core==2.39.0
 python-docx
 cairosvg
 wand
@@ -8,9 +8,3 @@ pydub
 fonttools
 rarfile
 py7zr
-aiogram==3.8.0
-pydantic==2.7.4
-pydantic-core==2.18.4 --only-binary=:all:
-
-
-
