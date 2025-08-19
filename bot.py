@@ -1,5 +1,8 @@
 import os
 import logging
+from aiohttp import web
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
+
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import FSInputFile
 from aiogram.filters import Command
@@ -17,15 +20,27 @@ from converters.video import convert_video_file
 from converters.archives import convert_archive_file
 from converters.fonts import convert_font_file
 
-load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+WEBHOOK_PATH = "/webhook"
+WEBHOOK_URL = f"{os.getenv('RENDER_EXTERNAL_URL')}{WEBHOOK_PATH}"
+PORT = int(os.getenv("PORT", 10000))
 
-logging.basicConfig(level=logging.INFO)
 bot = Bot(
     token=BOT_TOKEN,
     default=DefaultBotProperties(parse_mode=ParseMode.HTML)
 )
 dp = Dispatcher()
+
+async def main():
+    # Устанавливаем вебхук
+    await bot.set_webhook(WEBHOOK_URL)
+
+    app = web.Application()
+    webhook_handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
+    webhook_handler.register(app, path=WEBHOOK_PATH)
+    setup_application(app, dp, bot=bot)
+
+    return app
 
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
@@ -76,5 +91,4 @@ async def handle_docs(message: types.Message):
         await message.reply(f"⚠️ Ошибка: {e}")
 
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(dp.start_polling(bot))
+    web.run_app(main(), host="0.0.0.0", port=PORT)
