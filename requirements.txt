@@ -11,6 +11,6 @@ fonttools
 rarfile
 py7zr
 pydantic==2.9.2
-
+pypandoc
 python-dotenv
 
