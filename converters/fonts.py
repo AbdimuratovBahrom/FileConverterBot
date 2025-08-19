@@ -1,4 +1,5 @@
-from .api_utils import cloudconvert_convert
+from converters.api_utils import cloudconvert_convert
+
 
 def convert_font_file(file_path, target_format):
     input_format = file_path.split(".")[-1]

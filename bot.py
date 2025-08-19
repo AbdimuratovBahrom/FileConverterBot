@@ -12,15 +12,18 @@ from aiogram.client.default import DefaultBotProperties
 from dotenv import load_dotenv
 from .api_utils import cloudconvert_convert
 
-# Локальные конвертеры
-from converters.text import convert_text_file
-from converters.image import convert_image_file
-from converters.svg import convert_svg_file
+# Локальные конвертерыle
+
 # Тяжёлые через CloudConvert
+# bot.py
+from converters.api_utils import cloudconvert_convert
+from converters.text import convert_text_file
 from converters.audio import convert_audio_file
 from converters.video import convert_video_file
-from converters.archives import convert_archive_file
-from converters.fonts import convert_font_file
+from converters.image import convert_image_file
+from converters.svg import convert_svg_file
+from converters.pdf import convert_pdf_file
+
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_PATH = "/webhook"
