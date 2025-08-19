@@ -1,5 +1,6 @@
 import os
 import logging
+import pypandoc
 from aiohttp import web
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 
@@ -9,6 +10,7 @@ from aiogram.filters import Command
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
 from dotenv import load_dotenv
+from .api_utils import cloudconvert_convert
 
 # Локальные конвертеры
 from converters.text import convert_text_file
@@ -41,6 +43,19 @@ async def main():
     setup_application(app, dp, bot=bot)
 
     return app
+
+def convert_docx_to_pdf(input_file, output_file):
+    pypandoc.convert_file(
+        input_file,
+        "pdf",  # формат выхода
+        outputfile=output_file,
+        extra_args=['--standalone']
+    )
+    return output_file
+
+
+async def convert_pdf_file(file_path, target_format="docx"):
+    return await cloudconvert_convert(file_path, target_format)
 
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
