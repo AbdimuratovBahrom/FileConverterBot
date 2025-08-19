@@ -17,7 +17,7 @@ from converters.archives import convert_archive_file
 from converters.fonts import convert_font_file
 
 load_dotenv()
-BOT_TOKEN = os.getenv("8184283774:AAHlX0xwOU-3eKJK7DRsUvhFGQQaC506cxM")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN, parse_mode=ParseMode.HTML)
