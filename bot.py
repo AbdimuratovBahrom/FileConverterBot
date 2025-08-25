@@ -2,7 +2,8 @@ import os
 import tempfile
 import asyncio
 from fastapi import FastAPI, Request
-from aiogram import Bot, Dispatcher, F, types
+from aiogram import Bot, Dispatcher, F
+from aiogram.types import Message, Update
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
 from converters.text import convert_text_file
@@ -12,17 +13,16 @@ from converters.archive import extract_archive, create_archive
 from converters.api_utils import cloudconvert_convert
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # https://your-app.onrender.com/webhook
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # пример: https://fileconverterbot-hanm.onrender.com/webhook
 
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
-
 app = FastAPI()
 
 
-# === HANDLERS ===
+# === Обработчик документов ===
 @dp.message(F.document)
-async def handle_file(message: types.Message):
+async def handle_file(message: Message):
     doc = message.document
     file_name = doc.file_name.lower()
 
@@ -71,34 +71,28 @@ async def handle_file(message: types.Message):
         await message.answer(f"⚠️ Ошибка: {e}")
 
 
-# === WEBHOOK ===
+# === FastAPI маршруты ===
+@app.get("/")
+async def root():
+    return {"status": "ok", "message": "File Converter Bot is running 🚀"}
+
+
+@app.post("/webhook")
+async def telegram_webhook(request: Request):
+    data = await request.json()
+    update = Update.model_validate(data)
+    await dp.feed_update(bot, update)
+    return {"ok": True}
+
+
+# === Автоматическая установка вебхука ===
 @app.on_event("startup")
 async def on_startup():
-    # Устанавливаем webhook при запуске
-    if WEBHOOK_URL:
-        await bot.set_webhook(f"{WEBHOOK_URL}/webhook")
-
-
-       
-
+    await bot.set_webhook(WEBHOOK_URL)
     print("🚀 Bot started via webhook")
 
 
 @app.on_event("shutdown")
 async def on_shutdown():
-    await bot.session.close()
+    await bot.delete_webhook()
     print("🛑 Bot stopped")
-
-
-@app.post("/webhook")
-async def webhook(request: Request):
-    data = await request.json()
-    update = types.Update(**data)
-    await dp.feed_update(bot, update)
-    return {"ok": True}
-
-
-# Для проверки, что сервер живой
-@app.get("/")
-async def index():
-    return {"status": "ok", "message": "Bot is running"}
