@@ -77,6 +77,10 @@ async def on_startup():
     # Устанавливаем webhook при запуске
     if WEBHOOK_URL:
         await bot.set_webhook(f"{WEBHOOK_URL}/webhook")
+
+
+       
+
     print("🚀 Bot started via webhook")
 
 
