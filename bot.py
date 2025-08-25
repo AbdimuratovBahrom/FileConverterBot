@@ -2,37 +2,27 @@ import os
 import tempfile
 import asyncio
 from fastapi import FastAPI, Request
-import uvicorn
-
-from aiogram import Bot, Dispatcher, F
-from aiogram.types import Message
+from aiogram import Bot, Dispatcher, F, types
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
-from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
-
-# --- Конвертеры ---
 from converters.text import convert_text_file
 from converters.image import convert_image_file
 from converters.audio import convert_audio_file
 from converters.archive import extract_archive, create_archive
 from converters.api_utils import cloudconvert_convert
 
-# --- ENV ---
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # твой Render webhook URL
-PORT = int(os.getenv("PORT", 8080))     # Render отдаёт порт через переменную
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # https://your-app.onrender.com/webhook
 
-# --- Bot + Dispatcher ---
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
 
-# --- FastAPI ---
 app = FastAPI()
 
 
-# 📂 Обработка документов
+# === HANDLERS ===
 @dp.message(F.document)
-async def handle_file(message: Message):
+async def handle_file(message: types.Message):
     doc = message.document
     file_name = doc.file_name.lower()
 
@@ -81,22 +71,30 @@ async def handle_file(message: Message):
         await message.answer(f"⚠️ Ошибка: {e}")
 
 
-# --- Настройки Webhook ---
+# === WEBHOOK ===
 @app.on_event("startup")
 async def on_startup():
-    print("🚀 Bot started (webhook mode)")
-    await bot.set_webhook(WEBHOOK_URL)
+    # Устанавливаем webhook при запуске
+    if WEBHOOK_URL:
+        await bot.set_webhook(f"{WEBHOOK_URL}/webhook")
+    print("🚀 Bot started via webhook")
 
 
 @app.on_event("shutdown")
 async def on_shutdown():
-    await bot.delete_webhook()
+    await bot.session.close()
+    print("🛑 Bot stopped")
 
 
-# --- Подключаем aiogram к FastAPI ---
-SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path="/webhook")
-setup_application(app, dp, bot)
+@app.post("/webhook")
+async def webhook(request: Request):
+    data = await request.json()
+    update = types.Update(**data)
+    await dp.feed_update(bot, update)
+    return {"ok": True}
 
 
-if __name__ == "__main__":
-    uvicorn.run("bot:app", host="0.0.0.0", port=PORT)
+# Для проверки, что сервер живой
+@app.get("/")
+async def index():
+    return {"status": "ok", "message": "Bot is running"}
