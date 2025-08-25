@@ -7,7 +7,7 @@ python-docx
 cairosvg
 cloudconvert
 wand
-pydub
+ffmpeg-python==0.2.0
 fonttools
 rarfile
 py7zr
