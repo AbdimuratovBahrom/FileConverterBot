@@ -1,36 +1,54 @@
 import os
 import cloudconvert
-import tempfile
 
 CLOUDCONVERT_API_KEY = os.getenv("CLOUDCONVERT_API_KEY")
-api = cloudconvert.Api(CLOUDCONVERT_API_KEY)
+
+if not CLOUDCONVERT_API_KEY:
+    raise RuntimeError("❌ Установите CLOUDCONVERT_API_KEY в .env")
+
+# Создаем клиент
+api = cloudconvert.CloudConvert(api_key=CLOUDCONVERT_API_KEY)
 
 
-def cloudconvert_convert(input_file: str, target_format: str) -> str:
-    output_file = os.path.join(tempfile.gettempdir(),
-                               os.path.splitext(os.path.basename(input_file))[0] + f".{target_format}")
+async def cloudconvert_convert(input_file: str, output_format: str) -> str:
+    """
+    Конвертация файлов через CloudConvert API.
+    Работает с PDF, аудио, видео и др.
+    """
+    import tempfile
 
-    job = api.create_job({
+    # Создаем задачу конвертации
+    job = api.jobs.create(payload={
         "tasks": {
-            "import-file": {"operation": "import/upload"},
-            "convert": {
-                "operation": "convert",
-                "input": "import-file",
-                "output_format": target_format
+            "import-my-file": {
+                "operation": "import/upload"
             },
-            "export-file": {"operation": "export/url", "input": "convert"}
+            "convert-my-file": {
+                "operation": "convert",
+                "input": "import-my-file",
+                "output_format": output_format
+            },
+            "export-my-file": {
+                "operation": "export/url",
+                "input": "convert-my-file"
+            }
         }
     })
 
     upload_task = job["tasks"][0]
-    api.upload(upload_task, input_file)
 
-    job = api.wait(job["id"])
-    file_url = job["tasks"][-1]["result"]["files"][0]["url"]
+    # Загружаем файл
+    with open(input_file, "rb") as f:
+        api.tasks.upload(upload_task, f)
 
-    import requests
-    r = requests.get(file_url)
-    with open(output_file, "wb") as f:
-        f.write(r.content)
+    # Ждем завершения
+    job = api.jobs.wait(job["id"])
+    export_task = next(task for task in job["tasks"] if task["name"] == "export-my-file")
+
+    file_url = export_task["result"]["files"][0]["url"]
+
+    # Скачиваем результат
+    output_file = os.path.join(tempfile.gettempdir(), f"converted.{output_format}")
+    cloudconvert.download(url=file_url, filename=output_file)
 
     return output_file
