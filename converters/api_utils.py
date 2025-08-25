@@ -1,45 +1,35 @@
 import os
-import requests
 import cloudconvert
-from dotenv import load_dotenv
+import tempfile
 
-load_dotenv()
-API_KEY = os.getenv("CONVERT_API_KEY")
+CLOUDCONVERT_API_KEY = os.getenv("CLOUDCONVERT_API_KEY")
+api = cloudconvert.Api(CLOUDCONVERT_API_KEY)
 
-cloudconvert.configure(api_key=API_KEY)
 
-def cloudconvert_convert(input_file, input_format, output_format):
-    job = cloudconvert.Job.create(payload={
+def cloudconvert_convert(input_file: str, target_format: str) -> str:
+    output_file = os.path.join(tempfile.gettempdir(),
+                               os.path.splitext(os.path.basename(input_file))[0] + f".{target_format}")
+
+    job = api.create_job({
         "tasks": {
-            "import": {
-                "operation": "import/upload"
-            },
+            "import-file": {"operation": "import/upload"},
             "convert": {
                 "operation": "convert",
-                "input": "import",
-                "input_format": input_format,
-                "output_format": output_format
+                "input": "import-file",
+                "output_format": target_format
             },
-            "export": {
-                "operation": "export/url",
-                "input": "convert"
-            }
+            "export-file": {"operation": "export/url", "input": "convert"}
         }
     })
 
     upload_task = job["tasks"][0]
-    upload_url = upload_task["result"]["form"]["url"]
+    api.upload(upload_task, input_file)
 
-    with open(input_file, "rb") as f:
-        requests.post(upload_url, files={"file": f})
+    job = api.wait(job["id"])
+    file_url = job["tasks"][-1]["result"]["files"][0]["url"]
 
-    job = cloudconvert.Job.wait(id=job["id"])
-    export_task = [t for t in job["tasks"] if t["name"] == "export"][0]
-
-    file_url = export_task["result"]["files"][0]["url"]
-    output_file = f"{input_file}.{output_format}"
-
-    r = requests.get(file_url, stream=True)
+    import requests
+    r = requests.get(file_url)
     with open(output_file, "wb") as f:
         f.write(r.content)
 

@@ -1,112 +1,77 @@
 import os
-import logging
-import pypandoc
-from aiohttp import web
-from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
-
-from aiogram import Bot, Dispatcher, types
-from aiogram.types import FSInputFile
-from aiogram.filters import Command
+import tempfile
+import asyncio
+from aiogram import Bot, Dispatcher, F
+from aiogram.types import Message
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
-from dotenv import load_dotenv
-
-
-# Локальные конвертерыle
-
-# Тяжёлые через CloudConvert
-# bot.py
-from converters.api_utils import cloudconvert_convert
 from converters.text import convert_text_file
-from converters.audio import convert_audio_file
-from converters.video import convert_video_file
 from converters.image import convert_image_file
-from converters.svg import convert_svg_file
-from converters.pdf import convert_pdf_file
-
+from converters.audio import convert_audio_file
+from converters.archive import extract_archive, create_archive
+from converters.api_utils import cloudconvert_convert
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-WEBHOOK_PATH = "/webhook"
-WEBHOOK_URL = f"{os.getenv('RENDER_EXTERNAL_URL')}{WEBHOOK_PATH}"
-PORT = int(os.getenv("PORT", 10000))
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # для Render
 
-bot = Bot(
-    token=BOT_TOKEN,
-    default=DefaultBotProperties(parse_mode=ParseMode.HTML)
-)
+bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
 
-async def main():
-    # Устанавливаем вебхук
-    await bot.set_webhook(WEBHOOK_URL)
 
-    app = web.Application()
-    webhook_handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
-    webhook_handler.register(app, path=WEBHOOK_PATH)
-    setup_application(app, dp, bot=bot)
+@dp.message(F.document)
+async def handle_file(message: Message):
+    doc = message.document
+    file_name = doc.file_name.lower()
 
-    return app
+    # Скачиваем файл
+    file_path = os.path.join(tempfile.gettempdir(), file_name)
+    await message.bot.download(doc, destination=file_path)
 
-def convert_docx_to_pdf(input_file, output_file):
-    pypandoc.convert_file(
-        input_file,
-        "pdf",  # формат выхода
-        outputfile=output_file,
-        extra_args=['--standalone']
-    )
-    return output_file
-
-
-async def convert_pdf_file(file_path, target_format="docx"):
-    return await cloudconvert_convert(file_path, target_format)
-
-@dp.message(Command("start"))
-async def cmd_start(message: types.Message):
-    await message.answer("👋 Привет! Я конвертер файлов.\nПросто пришли мне документ.")
-
-@dp.message()
-async def handle_docs(message: types.Message):
-    if not message.document:
-        return await message.reply("📂 Пришлите файл для конвертации.")
-
-    file_id = message.document.file_id
-    file = await bot.get_file(file_id)
-    file_path = file.file_path
-    file_name = message.document.file_name
-    file_ext = file_name.split(".")[-1].lower()
-
-    os.makedirs("downloads", exist_ok=True)
-    downloaded_path = f"downloads/{file_name}"
-    await bot.download_file(file_path, downloaded_path)
-
-    target_format = "pdf"  # ⚡ тестовый вариант — конвертируем всё в PDF
+    ext = os.path.splitext(file_name)[1]
 
     try:
-        if file_ext in ["txt", "docx", "rtf", "odt", "epub", "pdf"]:
-            output_file = convert_text_file(downloaded_path, target_format)
-        elif file_ext in ["jpg", "jpeg", "png", "gif", "webp"]:
-            output_file = convert_image_file(downloaded_path, target_format)
-        elif file_ext == "svg":
-            output_file = convert_svg_file(downloaded_path, target_format)
-        elif file_ext in ["mp3", "wav", "ogg"]:
-            output_file = convert_audio_file(downloaded_path, target_format)
-        elif file_ext in ["mp4", "avi", "mkv"]:
-            output_file = convert_video_file(downloaded_path, target_format)
-        elif file_ext in ["zip", "rar", "7z"]:
-            output_file = convert_archive_file(downloaded_path, target_format)
-        elif file_ext in ["ttf", "otf", "woff"]:
-            output_file = convert_font_file(downloaded_path, target_format)
-        else:
-            return await message.reply("❌ Этот формат пока не поддерживается.")
+        # --- Текстовые ---
+        if ext in [".docx", ".txt", ".md", ".rtf", ".odt", ".html", ".epub"]:
+            out_file = convert_text_file(file_path, target_format="txt")
+            await message.answer_document(open(out_file, "rb"))
 
-        if output_file:
-            await message.reply_document(FSInputFile(output_file))
-            os.remove(output_file)
+        # --- Изображения ---
+        elif ext in [".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff", ".svg"]:
+            out_file = convert_image_file(file_path, target_format="png")
+            await message.answer_document(open(out_file, "rb"))
+
+        # --- Архивы ---
+        elif ext in [".zip", ".rar", ".7z"]:
+            out_dir = extract_archive(file_path)
+            new_zip = create_archive(out_dir, "zip")
+            await message.answer_document(open(new_zip, "rb"))
+
+        # --- PDF ---
+        elif ext == ".pdf":
+            out_file = cloudconvert_convert(file_path, "docx")
+            await message.answer_document(open(out_file, "rb"))
+
+        # --- Аудио ---
+        elif ext in [".mp3", ".wav", ".ogg", ".flac", ".m4a"]:
+            out_file = convert_audio_file(file_path, "wav")
+            await message.answer_document(open(out_file, "rb"))
+
+        # --- Видео ---
+        elif ext in [".mp4", ".avi", ".mkv", ".webm", ".mov", ".wmv"]:
+            out_file = cloudconvert_convert(file_path, "mp4")
+            await message.answer_document(open(out_file, "rb"))
+
         else:
-            await message.reply("❌ Ошибка при конвертации.")
+            await message.answer("❌ Неподдерживаемый формат!")
 
     except Exception as e:
-        await message.reply(f"⚠️ Ошибка: {e}")
+        await message.answer(f"⚠️ Ошибка: {e}")
+
+
+async def main():
+    print("🚀 Bot started")
+    await dp.start_polling(bot)
+
 
 if __name__ == "__main__":
-    web.run_app(main(), host="0.0.0.0", port=PORT)
+    asyncio.run(main())
