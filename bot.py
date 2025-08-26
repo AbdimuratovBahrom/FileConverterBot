@@ -1,58 +1,39 @@
 import os
+from dotenv import load_dotenv
+from fastapi import FastAPI
 import telebot
-from fastapi import FastAPI, Request
-from converters.api_utils import cloudconvert_convert
 
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+# Загружаем .env (для локального теста)
+load_dotenv()
 
-bot = telebot.TeleBot(TOKEN)
+# Получаем токен
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+if not BOT_TOKEN:
+    raise RuntimeError("❌ BOT_TOKEN не задан! Добавь его в Environment Variables на Render или в .env")
+
+# Создаём объект бота
+bot = telebot.TeleBot(BOT_TOKEN)
+
+# FastAPI приложение
 app = FastAPI()
 
-
-# ==== Routes ====
-@app.get("/")
-def index():
-    return {"status": "ok", "message": "Bot is running on Render"}
-
-
-@app.post("/webhook")
-async def webhook(request: Request):
-    data = await request.body()
-    update = telebot.types.Update.de_json(data.decode("utf-8"))
-    bot.process_new_updates([update])
-    return {"status": "ok"}
-
-
-# ==== Startup ====
 @app.on_event("startup")
 async def startup_event():
-    bot.remove_webhook()
-    bot.set_webhook(url=WEBHOOK_URL)
-
-
-# ==== Bot handlers ====
-@bot.message_handler(commands=["start"])
-def start(message):
-    bot.reply_to(message, "👋 Привет! Отправь файл, и я конвертирую его через CloudConvert.")
-
-
-@bot.message_handler(content_types=["document"])
-def handle_file(message):
+    print("🚀 Стартап приложения...")
+    # Безопасно удаляем старый webhook
     try:
-        file_info = bot.get_file(message.document.file_id)
-        file_url = f"https://api.telegram.org/file/bot{TOKEN}/{file_info.file_path}"
-
-        # Пример: конвертация в pdf
-        output_file = cloudconvert_convert(
-            input_file_url=file_url,
-            input_format=message.document.file_name.split(".")[-1],
-            output_format="pdf",
-            output_file="output.pdf"
-        )
-
-        with open(output_file, "rb") as f:
-            bot.send_document(message.chat.id, f)
-
+        bot.remove_webhook()
+        print("✅ Webhook успешно удалён")
     except Exception as e:
-        bot.reply_to(message, f"⚠️ Ошибка: {e}")
+        print(f"⚠️ Не удалось удалить webhook: {e}")
+
+@app.get("/")
+async def root():
+    return {"status": "Bot is running"}
+
+# Пример ручки webhook (если используешь)
+@app.post("/webhook")
+async def telegram_webhook(update: dict):
+    from telebot.types import Update
+    upd = Update.de_json(update)
+    bot.process_new_updates([
