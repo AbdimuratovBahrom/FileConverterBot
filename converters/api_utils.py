@@ -1,7 +1,11 @@
+
 import os
 import cloudconvert
 
-api = cloudconvert.ApiClient(api_key=os.getenv("CLOUDCONVERT_API_KEY"))
+api = cloudconvert.Client(api_key=os.getenv("CLOUDCONVERT_API_KEY"))
+
+
+
 
 
 async def cloudconvert_convert(input_file: str, output_file: str):
