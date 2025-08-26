@@ -1,65 +1,18 @@
 import os
-import requests
+import cloudconvert
 
-CLOUDCONVERT_API_KEY = os.getenv("CLOUDCONVERT_API_KEY")
-API_URL = "https://api.cloudconvert.com/v2/jobs"
-
-if not CLOUDCONVERT_API_KEY:
-    raise ValueError("❌ Нет CLOUDCONVERT_API_KEY в .env!")
-
-headers = {"Authorization": f"Bearer {CLOUDCONVERT_API_KEY}"}
+# Инициализация CloudConvert API
+api = cloudconvert.Api(os.getenv("CLOUDCONVERT_API_KEY"))
 
 
-async def cloudconvert_convert(input_file, input_format, output_format, output_file):
+def cloudconvert_convert(input_file, output_format, output_file=None):
     """
-    Конвертация файлов через CloudConvert (универсальный REST API).
+    Конвертация файла через CloudConvert API.
+    :param input_file: путь к исходному файлу
+    :param output_format: в какой формат конвертировать (например, "docx", "pdf", "mp4")
+    :param output_file: путь к выходному файлу (если None, создаётся автоматически)
+    :return: путь к выходному файлу
     """
-
-    # Создаем задачу
-    job_resp = requests.post(
-        API_URL,
-        headers=headers,
-        json={
-            "tasks": {
-                "import-my-file": {"operation": "import/upload"},
-                "convert-my-file": {
-                    "operation": "convert",
-                    "input": "import-my-file",
-                    "input_format": input_format,
-                    "output_format": output_format,
-                },
-                "export-my-file": {
-                    "operation": "export/url",
-                    "input": "convert-my-file",
-                },
-            }
-        },
-    )
-    job = job_resp.json()["data"]
-
-    # Загружаем файл
-    import_task = next(t for t in job["tasks"] if t["name"] == "import-my-file")
-    upload_url = import_task["result"]["form"]["url"]
-    form_params = import_task["result"]["form"]["parameters"]
-
-    with open(input_file, "rb") as f:
-        files = {"file": f}
-        requests.post(upload_url, data=form_params, files=files)
-
-    # Ждем завершения
-    while True:
-        job_status = requests.get(f"{API_URL}/{job['id']}", headers=headers).json()["data"]
-        export_task = next(t for t in job_status["tasks"] if t["name"] == "export-my-file")
-
-        if export_task["status"] == "finished":
-            file_url = export_task["result"]["files"][0]["url"]
-            break
-        elif export_task["status"] == "error":
-            raise RuntimeError("❌ Ошибка конвертации через CloudConvert")
-
-    # Скачиваем результат
-    r = requests.get(file_url)
-    with open(output_file, "wb") as f:
-        f.write(r.content)
-
-    return output_file
+    # Если имя не указано → формируем автоматически
+    if output_file is None:
+        base, _ = os
