@@ -32,8 +32,10 @@ async def root():
     return {"status": "Bot is running"}
 
 # Пример ручки webhook (если используешь)
+# Пример безопасного вызова webhook
 @app.post("/webhook")
 async def telegram_webhook(update: dict):
     from telebot.types import Update
     upd = Update.de_json(update)
-    bot.process_new_updates([
+    bot.process_new_updates([upd])  
+    return {"ok": True}
