@@ -1,46 +1,53 @@
-
+# converters/api_utils.py
 import os
-import cloudconvert
+import requests
 
-api = cloudconvert.Client(api_key=os.getenv("CLOUDCONVERT_API_KEY"))
+API_KEY = os.getenv("CLOUDCONVERT_API_KEY")
+API_URL = "https://api.cloudconvert.com/v2/jobs"
 
+headers = {"Authorization": f"Bearer {API_KEY}"}
 
+def cloudconvert_convert(input_file: str, output_format: str, output_file=None):
+    if output_file is None:
+        base, _ = os.path.splitext(input_file)
+        output_file = f"{base}.{output_format}"
 
-
-
-async def cloudconvert_convert(input_file: str, output_file: str):
-    """
-    Конвертирует файл через CloudConvert (новая API).
-    input_file: локальный путь к файлу для загрузки
-    output_file: путь для сохранения результата
-    """
-    job = api.jobs.create(payload={
+    payload = {
         "tasks": {
-            "upload": {"operation": "import/upload"},
+            "import": {"operation": "import/upload"},
             "convert": {
                 "operation": "convert",
-                "input": "upload",
-                "output_format": output_file.split(".")[-1]
+                "input": "import",
+                "output_format": output_format
             },
             "export": {"operation": "export/url", "input": "convert"}
         }
-    })
+    }
 
-    # Загрузка файла
-    upload_task = job["tasks"][0]
-    upload_url = upload_task["result"]["form"]["url"]
+    res = requests.post(API_URL, headers=headers, json=payload)
+    job = res.json()["data"]
+
+    task = next(t for t in job["tasks"] if t["name"] == "import")
+    upload_url = task["result"]["form"]["url"]
+    form = task["result"]["form"]["parameters"]
 
     with open(input_file, "rb") as f:
-        api.tasks.upload(upload_task, f)
+        requests.post(upload_url, data=form, files={"file": f})
 
-    # Ждём выполнения
-    job = api.jobs.wait(job["id"])
+    # Polling job status
+    job_id = job["id"]
+    while True:
+        res = requests.get(f"{API_URL}/{job_id}", headers=headers)
+        job = res.json()["data"]
+        export = next(t for t in job["tasks"] if t["name"] == "export")
+        if export["status"] == "finished":
+            file_url = export["result"]["files"][0]["url"]
+            break
+        elif export["status"] == "error":
+            raise RuntimeError("CloudConvert failed")
 
-    # Скачиваем результат
-    export_task = [t for t in job["tasks"] if t["name"] == "export"][0]
-    file_url = export_task["result"]["files"][0]["url"]
-
-    import requests
-    r = requests.get(file_url)
+    result = requests.get(file_url)
     with open(output_file, "wb") as f:
-        f.write(r.content)
+        f.write(result.content)
+
+    return output_file
