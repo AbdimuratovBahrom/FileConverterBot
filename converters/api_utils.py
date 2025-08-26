@@ -1,11 +1,11 @@
 import os
 import cloudconvert
 
-api = cloudconvert.Api(os.getenv("CLOUDCONVERT_API_KEY"))
+cloudconvert.configure(api_key=os.getenv("CLOUDCONVERT_API_KEY"))
 
 
 def cloudconvert_convert(input_file_url, input_format, output_format, output_file):
-    job = api.create_job({
+    job = cloudconvert.Job.create(payload={
         "tasks": {
             "import-my-file": {
                 "operation": "import/url",
@@ -20,14 +20,14 @@ def cloudconvert_convert(input_file_url, input_format, output_format, output_fil
             },
             "export-my-file": {
                 "operation": "export/url",
-                "input": ["convert-my-file"],
-                "archive_multiple_files": False
+                "input": ["convert-my-file"]
             }
         }
     })
 
-    job = api.wait(job["id"])
-    file = job["tasks"][-1]["result"]["files"][0]
-    api.download(file, output_file)
+    job = cloudconvert.Job.wait(id=job["id"])  # ждём выполнения
+
+    file = job["tasks"][-1]["result"]["files"][0]  # получаем ссылку
+    cloudconvert.download(filename=output_file, url=file["url"])
 
     return output_file
