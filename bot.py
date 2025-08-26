@@ -1,57 +1,58 @@
 import os
+import telebot
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
-import httpx
-
 from converters.api_utils import cloudconvert_convert
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # твой Render URL + /webhook/{token}
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
+bot = telebot.TeleBot(TOKEN)
 app = FastAPI()
 
-# Установка вебхука при старте
+
+# ==== Routes ====
+@app.get("/")
+def index():
+    return {"status": "ok", "message": "Bot is running on Render"}
+
+
+@app.post("/webhook")
+async def webhook(request: Request):
+    data = await request.body()
+    update = telebot.types.Update.de_json(data.decode("utf-8"))
+    bot.process_new_updates([update])
+    return {"status": "ok"}
+
+
+# ==== Startup ====
 @app.on_event("startup")
 async def startup_event():
-    async with httpx.AsyncClient() as client:
-        r = await client.post(
-            f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook",
-            params={"url": f"{WEBHOOK_URL}/webhook/{BOT_TOKEN}"}
+    bot.remove_webhook()
+    bot.set_webhook(url=WEBHOOK_URL)
+
+
+# ==== Bot handlers ====
+@bot.message_handler(commands=["start"])
+def start(message):
+    bot.reply_to(message, "👋 Привет! Отправь файл, и я конвертирую его через CloudConvert.")
+
+
+@bot.message_handler(content_types=["document"])
+def handle_file(message):
+    try:
+        file_info = bot.get_file(message.document.file_id)
+        file_url = f"https://api.telegram.org/file/bot{TOKEN}/{file_info.file_path}"
+
+        # Пример: конвертация в pdf
+        output_file = cloudconvert_convert(
+            input_file_url=file_url,
+            input_format=message.document.file_name.split(".")[-1],
+            output_format="pdf",
+            output_file="output.pdf"
         )
-        print("Webhook set:", r.json())
 
+        with open(output_file, "rb") as f:
+            bot.send_document(message.chat.id, f)
 
-@app.post("/webhook/{token}")
-async def webhook_handler(token: str, request: Request):
-    if token != BOT_TOKEN:
-        return JSONResponse({"ok": False, "error": "invalid token"}, status_code=403)
-
-    update = await request.json()
-    print("Update:", update)
-
-    if "message" in update:
-        chat_id = update["message"]["chat"]["id"]
-        text = update["message"].get("text", "")
-
-        if text.startswith("/convert"):
-            try:
-                input_file = "example.docx"   # тестовый входной файл
-                output_file = "example.pdf"
-
-                await cloudconvert_convert(input_file, output_file)
-
-                await send_message(chat_id, "✅ Конвертация завершена! Файл сохранён.")
-            except Exception as e:
-                await send_message(chat_id, f"❌ Ошибка: {e}")
-        else:
-            await send_message(chat_id, "Привет! Отправь /convert для теста.")
-
-    return JSONResponse({"ok": True})
-
-
-async def send_message(chat_id: int, text: str):
-    async with httpx.AsyncClient() as client:
-        await client.post(
-            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-            json={"chat_id": chat_id, "text": text}
-        )
+    except Exception as e:
+        bot.reply_to(message, f"⚠️ Ошибка: {e}")
