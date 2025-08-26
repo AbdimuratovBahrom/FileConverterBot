@@ -5,7 +5,6 @@ aiogram==3.13.1
 aiohttp==3.10.11
 python-docx
 cairosvg
-cloudconvert
 fastapi
 uvicorn
 ffmpeg-python==0.2.0
